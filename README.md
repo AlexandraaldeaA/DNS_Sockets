@@ -1,4 +1,5 @@
 # DNS_Sockets
+18.06.2024
 Am accesat site-urile:
  https://w3.cs.jmu.edu/kirkpams/OpenCSF/Books/csf/html/UDPSockets.html 
  https://www.digi.com/resources/documentation/digidocs/90002219/tasks/t_dns_lookup.htm?TocPath=Socket%20examples%7CDNS%20lookup%7C_____0
