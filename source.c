@@ -8,4 +8,5 @@ int main()
     b=7;
     return 0;
     //salutare
+    //mama
 }
