@@ -14,3 +14,6 @@ Am accesat site-urile:
  Am citit din documentul RFC-1035 detaliile si specificatiile pentru a putea implementa DNS in conformitate.(structurile).
  Am implementat structurile pentru a putea lucra cu ele si urmeaza sa implementez functiile pentru impachetare, conversie, realizarea interogarii DNS.
  Am implementat un info care explica ce face si cum trebuie folosit.
+
+ 20.06.2024
+ Am continuat de scris cod si am implementat o parte din functia dns_lookup care primeste ca argumente numele de domeniu si tipul in functie de optiunea dorita de utilizator. Am declarat un file descriptor pentru socket cu care sa lucrez pe parcurs pentru trimitea cererii DNS. Am populat structura serverului DNS(Google Public DNS) si am creat o structura DNS_HEADER pe care am populat-o pentru a crea cererea DNS a utilizatorului. In variabila buffer retin la inceputul acesteia dns-ul, apoi in continuare retin numele de domeniu in formatul DNS, iar dupa numele de domeniu, retin in continuare informatiile despre interogare(question_info):type-ul=tipul specificat in argument in functie de optiunea utilizatorului si class-ul=IN(Internet.)Trimit cererea DNS si verific daca trimiterea acesteia a avut loc cu succes,altfel afisez un mesaj de eroare si inchid socket-ul.In continuare, primesc raspunsul DNS pe care urmeaza sa il parsez.
