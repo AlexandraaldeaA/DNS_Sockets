@@ -17,3 +17,6 @@ Am accesat site-urile:
 
  20.06.2024
  Am continuat de scris cod si am implementat o parte din functia dns_lookup care primeste ca argumente numele de domeniu si tipul in functie de optiunea dorita de utilizator. Am declarat un file descriptor pentru socket cu care sa lucrez pe parcurs pentru trimitea cererii DNS. Am populat structura serverului DNS(Google Public DNS) si am creat o structura DNS_HEADER pe care am populat-o pentru a crea cererea DNS a utilizatorului. In variabila buffer retin la inceputul acesteia dns-ul, apoi in continuare retin numele de domeniu in formatul DNS, iar dupa numele de domeniu, retin in continuare informatiile despre interogare(question_info):type-ul=tipul specificat in argument in functie de optiunea utilizatorului si class-ul=IN(Internet.)Trimit cererea DNS si verific daca trimiterea acesteia a avut loc cu succes,altfel afisez un mesaj de eroare si inchid socket-ul.In continuare, primesc raspunsul DNS pe care urmeaza sa il parsez.
+
+ 21.06.2024
+ Am scris in continuare cod pentru implementarea functiei de dns_lookup si m-am documentat despre modul de transmitere in retea a socketului(buffer-ul care contine informatiile necesare(dns header, name, question info)):htons, ntohs. Incerc sa rezolv problema la primirea pachetului, deoarece nu il primesc. 
