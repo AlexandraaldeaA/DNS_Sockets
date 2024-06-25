@@ -10,45 +10,54 @@
 #define BUFFER_SIZE 512
 
 void print_info();
-void dns_lookup(unsigned char*  , uint16_t);
-void change_dns_format_name(unsigned char * , unsigned char* );
+void dns_lookup (unsigned char* , int);
+void change_dns_format_name(unsigned char*,unsigned char*);
+unsigned char* read_name(unsigned char*,unsigned char*,int*);
 
 struct DNS_HEADER
 {
-    uint16_t ID; //id to match up
-    unsigned char QR :1; //bit field-just a bit to specify if it is query(0) or response(1)
-    unsigned char OPCODE :4; //4 bit field-what kind of query
-    unsigned char AA :1; //bit-specifies that the responding name server is an authority for the domain name in question section.
-    unsigned char TC :1; //truncated or not
-    unsigned char RD :1; //recursion desidered
-    unsigned char RA :1; //recursion available-recursive query support
-    unsigned char Z :1; //must be 0 in all queries and responses, for future use
-    unsigned char CD :1; // checking disabled
-	unsigned char AD :1; // authenticated data
-    unsigned char RCODE :4; //for responses(errors, format errors,name errrors, etc)
-    uint16_t QDCOUNT; //specifies the number of resource records in the answer section. //number of question entries
-    uint16_t ANSCOUNT; //specifies the number of name server resource records in the authority records section. //number of answers entries
-    uint16_t NSCOUNT; //specifies the number of name server resource records in the authority records section. //number of authority entries
-    uint16_t ARCOUNT; //specifies the number of resource records in the additional records section //number of additional entries
+	uint16_t id; //id to match up
+
+	unsigned char rd :1; //recursion desidered
+	unsigned char tc :1; //truncated or not
+	unsigned char aa :1; //bit-specifies that the responding name server is an authority for the domain name in question section.
+	unsigned char opcode :4; //4 bit field-what kind of query
+	unsigned char qr :1; //bit field-just a bit to specify if it is query(0) or response(1)
+
+	unsigned char rcode :4; //for responses(errors, format errors,name errrors, etc)
+	unsigned char cd :1; // checking disabled
+	unsigned char ad :1; // authenticated data
+	unsigned char z :1; //must be 0 in all queries and responses, for future use
+	unsigned char ra :1; // recursion available
+
+	uint16_t q_count; // number of question entries
+	uint16_t ans_count; // number of answer entries
+	uint16_t auth_count; // number of authority entries
+	uint16_t add_count; // number of resource entries
 };
 
 struct QUESTION
 {
-    uint16_t QTYPE; //type of query
-    uint16_t QCLASS; //class of the query
+	uint16_t qtype; //type of query
+	uint16_t qclass; //class of query
 };
 
 #pragma pack(push, 1)
+struct R_DATA
+{
+	uint16_t type;
+	uint16_t _class;
+	uint32_t ttl;
+	uint16_t data_len;
+};
+#pragma pack(pop)
+
 struct RES_RECORD
 {
 	unsigned char *name;
-	uint16_t TYPE;
-    uint16_t _CLASS;
-    uint32_t TTL;
-    uint16_t RDLENGTH;
+	struct R_DATA *resource;
 	unsigned char *rdata;
 };
-#pragma pack(pop)
 
 struct QUERY
 {
@@ -56,9 +65,9 @@ struct QUERY
     struct QUESTION* question;
 };
 
-int main(int argc, char* argv[])
-{  
-    if(argc==1)
+int main( int argc , char *argv[])
+{
+	if(argc==1)
     {
         printf("No argument. Please write the argument(name domain) or 'info' to see the options and the syntax.\n");
         return 0;
@@ -71,7 +80,7 @@ int main(int argc, char* argv[])
         }
         else
         {
-            dns_lookup(argv[1], 1); // Default type A
+            dns_lookup(argv[1], 1); // default type A
         }
     }
     else if(argc==3)
@@ -82,7 +91,7 @@ int main(int argc, char* argv[])
         }
          else if(strcmp(argv[1],"MX")==0)
         {
-
+            dns_lookup(argv[2],15); //mail server
         }
         else if(strcmp(argv[1],"ANY")==0)
         {
@@ -134,80 +143,247 @@ void change_dns_format_name(unsigned char * dns, unsigned char* host)
      *dns++='\0';
 }
 
-void dns_lookup(unsigned char *hostname, uint16_t query_type)
+void dns_lookup(unsigned char *host , int query_type)
 {
-    int socketfd;
-    struct sockaddr_in server_addr;
-    unsigned char buffer[BUFFER_SIZE], *name,*reader_answer;
+	unsigned char buf[BUFFER_SIZE],*name,*reader;
+	int socket_fd;
 
-    struct DNS_HEADER* dns=NULL;
-    struct QUESTION* question_info=NULL;
+	struct sockaddr_in dest;
+    struct sockaddr_in address;
 
-    //create udp socket
-    socketfd=socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
-    //AF_INET-IPv4
-    //SOCK_DGRAM-datagram socket UDP
-    if(socketfd<0)
+
+	struct DNS_HEADER *dns = NULL;
+	struct QUESTION *qinfo = NULL;
+
+    struct RES_RECORD answers[20],auth[20],addit[20]; //the replies from the DNS server
+
+	socket_fd = socket(AF_INET , SOCK_DGRAM , IPPROTO_UDP); //UDP packet for DNS queries
+	//AF_INET-IPv4
+
+	dest.sin_family = AF_INET;
+	dest.sin_port = htons(DNS_PORT);
+	dest.sin_addr.s_addr = inet_addr("8.8.8.8"); //dns servers
+
+	dns = (struct DNS_HEADER *)&buf;
+
+	dns->id = (unsigned short) htons(getpid());
+	dns->qr = 0; //query
+	dns->opcode = 0; //standard query
+	dns->aa = 0; //not authoritative
+	dns->tc = 0; //not truncated
+	dns->rd = 1; //recursion desired
+	dns->ra = 0; //recursion not available
+	dns->z = 0;
+	dns->ad = 0;
+	dns->cd = 0;
+	dns->rcode = 0;
+	dns->q_count = htons(1); //1 question
+	dns->ans_count = 0;
+	dns->auth_count = 0;
+	dns->add_count = 0;
+
+	name =(unsigned char*)&buf[sizeof(struct DNS_HEADER)]; ////point to after the location of dns header
+
+	change_dns_format_name(name , host);
+
+	qinfo =(struct QUESTION*)&buf[sizeof(struct DNS_HEADER) + (strlen((const char*)name) + 1)];
+
+	qinfo->qtype = htons( query_type ); // type specified by the argument
+	qinfo->qclass = htons(1); //clasa IN(internet)
+
+	if( sendto(socket_fd,(char*)buf,sizeof(struct DNS_HEADER) + (strlen((const char*)name)+1) + sizeof(struct QUESTION),0,(struct sockaddr*)&dest,sizeof(dest)) < 0)
+	{
+		printf("Failed to send\n");
+	}
+	
+	int dest_len = sizeof dest;
+
+	if(recvfrom (socket_fd,(char*)buf , 512 , 0 , (struct sockaddr*)&dest , (socklen_t*)&dest_len ) < 0)
+	{
+		printf("Failed to receive");
+	}
+
+    dns = (struct DNS_HEADER*) buf;
+
+	reader = &buf[sizeof(struct DNS_HEADER) + (strlen((const char*)name)+1) + sizeof(struct QUESTION)]; //move ahead of the dns header,name and the query field
+
+    //read answers
+    int stop=0;
+
+    for(int i=0;i<ntohs(dns->ans_count);i++)
     {
-        printf("Error creating socket.\n");
-        exit(1);
+        answers[i].name=read_name(reader,buf,&stop);
+
+        reader = reader + stop;
+
+        answers[i].resource = (struct R_DATA*)(reader);
+        reader=reader+sizeof(struct R_DATA);
+
+        if(ntohs(answers[i].resource->type) == 1) //IPv4 address
+        {
+            answers[i].rdata = (unsigned char*)malloc(ntohs(answers[i].resource->data_len));
+
+            for(int j=0 ; j<ntohs(answers[i].resource->data_len) ; j++)
+			{
+				answers[i].rdata[j]=reader[j];
+			}
+
+            answers[i].rdata[ntohs(answers[i].resource->data_len)] = '\0';
+
+            reader = reader + ntohs(answers[i].resource->data_len);
+
+        }
+        else
+        {
+            answers[i].rdata = read_name(reader,buf,&stop);
+			reader = reader + stop;
+        }
+
     }
 
-    //google public dns
-    server_addr.sin_family=AF_INET;
-    server_addr.sin_port=htons(53); //convert dns port(53) to big endian
-    server_addr.sin_addr.s_addr=inet_addr("8.8.8.8");
+    //read authorities
+    for(int i=0;i<ntohs(dns->auth_count);i++)
+	{
+		auth[i].name=read_name(reader,buf,&stop);
+		reader+=stop;
 
-    dns=(struct DNS_HEADER *)&buffer; //point to the start of the buffer
-    dns->ID=(uint16_t)htons(getpid());
-    dns->QR=0; //query
-    dns->OPCODE=0; //standard query
-    dns->AA=0; //not auth(valid in responses)
-    dns->TC=0; //not trunc
-    dns->RD=1; //recursive
-    dns->RA=0;
-    dns->Z=0;   
-    dns->CD=0;
-    dns->AD=0;
-    dns->RCODE=0; //no error code
-    dns->QDCOUNT=htons(1); // 1 question //questions
-    dns->ANSCOUNT=0; //number of resource records in the answer section //RRS
-    dns->NSCOUNT=0; //number of nameserver resource records in the authority records section //authority RRs
-    dns->ARCOUNT=0; //number of resource records in the additional records section //additional RRs
+		auth[i].resource=(struct R_DATA*)(reader);
+		reader+=sizeof(struct R_DATA);
 
-    name=(unsigned char*)&buffer[sizeof(struct DNS_HEADER)]; //point to after the location of dns header
+		auth[i].rdata=read_name(reader,buf,&stop);
+		reader+=stop;
+	}
 
-    change_dns_format_name(name,hostname);
+    //read additional
+    for(int i=0;i<ntohs(dns->add_count);i++)
+	{
+		addit[i].name=read_name(reader,buf,&stop);
+		reader+=stop;
 
-    printf("%s\n",name);
+		addit[i].resource=(struct R_DATA*)(reader);
+		reader+=sizeof(struct R_DATA);
 
-    question_info=(struct QUESTION*)&buffer[sizeof(struct DNS_HEADER)+strlen((const char*)name)+1];
-    question_info->QCLASS=htons(1); //clasa IN(internet)
-    question_info->QTYPE=htons(query_type); // type specified by the argument
+		if(ntohs(addit[i].resource->type)==1)
+		{
+			addit[i].rdata = (unsigned char*)malloc(ntohs(addit[i].resource->data_len));
+			for(int j=0;j<ntohs(addit[i].resource->data_len);j++)
+			addit[i].rdata[j]=reader[j];
 
-    if(sendto(socketfd,(char*)buffer,sizeof(struct DNS_HEADER)+(strlen((const char*)name)+1)+sizeof(struct QUESTION),0,(struct sockaddr*)&server_addr,sizeof(server_addr))<0)
+			addit[i].rdata[ntohs(addit[i].resource->data_len)]='\0';
+			reader+=ntohs(addit[i].resource->data_len);
+		}
+		else
+		{
+			addit[i].rdata=read_name(reader,buf,&stop);
+			reader+=stop;
+		}
+	}
+
+    //print answers
+    printf("->>HEADER<<-\tID : %d\tOPCODE : %d\t",dns->id,dns->opcode);
+    if(dns->rcode==0)
+        printf("STATUS : NO ERROR\n");
+    printf("FLAGS: ");
+    if(dns->qr==1)
+        printf("qr ");
+    if (dns->rd==1)
+        printf("rd ");
+    if(dns->ra==1)
+        printf("ra\t");
+
+    printf("\nANSWERS: %d \n" , ntohs(dns->ans_count) );
+    printf("AUTHORITY: %d \n" , ntohs(dns->auth_count) );
+    printf("ADDITIONAL: %d\n",ntohs(dns->add_count));
+	for(int i=0 ; i < ntohs(dns->ans_count) ; i++)
     {
-        printf("Failed to send\n");
-        close(socketfd);
-        exit(1);
+        printf("Name : %s ",answers[i].name);
+
+        if( ntohs(answers[i].resource->type) == 1) //IPv4 address
+		{
+			long *p;
+			p=(long*)answers[i].rdata;
+			address.sin_addr.s_addr=(*p); //transform from binary form to string the address
+			printf("has IPv4 address : %s",inet_ntoa(address.sin_addr));
+		}
+		
+		if(ntohs(answers[i].resource->type)==5) 
+		{
+			//canonical name
+			printf("has alias name : %s",answers[i].rdata);
+		}
+
+		printf("\n");
     }
 
-    int server_addr_len = sizeof server_addr;
+}
 
-    printf("aici\n");
+unsigned char* read_name(unsigned char* reader,unsigned char* buffer,int* count)
+{
+    unsigned char *name;
+    unsigned int p=0,jumped=0,offset;
 
-    if(recvfrom(socketfd,(char*)buffer,BUFFER_SIZE,0,(struct sockaddr*)&server_addr,(socklen_t*)&server_addr_len)<0)
+    *count = 1;
+
+    name = (unsigned char*)malloc(256);
+
+    name[0]='\0';
+
+    while(*reader!=0) //till we arrived to the end of the codified name
     {
-        printf("Failed to receive\n");
-        close(socketfd);
-        exit(1);
+        if(*reader>=192) //check if compression label; used for compression label(uses 2 bytes to refer to the location  of the already used name and points to the location)
+        {
+            offset = (*reader)*256 + *(reader+1) - 49152; //0b11000000xxxxxxxx 
+            //*reader =11000000 in the first 2 bits and the rest 6 bits for the offset -the first octet
+            //*reader+1 =the second octet
+            //*reader*256 =left shift with 8 bits
+            //49152=11000000 00000000
+            //ex:*reader=192, *reader+1=12=>192*256=49152; 49152+12=49164; 49164-49152=12(the real offset)=>pos 12 in buffer
+
+            reader = buffer + offset - 1;
+
+            jumped = 1; //jumped to another location
+        }
+        else
+        {
+            name[p++]=*reader;
+        }
+
+        reader = reader+1;
+
+        if(jumped==0)
+		{
+			*count = *count + 1; //we havent jumped to another location so we can add to the count
+		}
     }
 
-    dns=(struct DNS_HEADER*)buffer; //parse received dns and point to the start of the buffer
-    reader_answer = &buffer[sizeof(struct DNS_HEADER) + (strlen((const char*)name) + 1) + sizeof(struct QUESTION)]; //starting from the answer section, which is after dns header, name, question
+    name[p]='\0';
 
-    printf("Answer RRs: %d\n", ntohs(dns->ANSCOUNT));
+    if(jumped==1)
+	{
+		*count = *count + 1; 
+	}
 
+    int i;
+    int contor=0;
 
+    unsigned char* new_name;
+    new_name = (unsigned char*)malloc(256);
+    new_name[0] = '\0';
 
+    for (i = 0; i < strlen((const char*)name); i++)
+	{
+		p = name[i];
+		for (int j = 0; j < p; j++)
+		{
+			new_name[contor] = name[i + 1];
+			i = i + 1;
+			contor++;
+		}
+		new_name[contor] = '.';
+		contor++;
+	}
+	new_name[contor-1] = '\0';
+
+    free(name);
+	return new_name;
 }

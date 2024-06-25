@@ -20,3 +20,7 @@ Am accesat site-urile:
 
  21.06.2024
  Am scris in continuare cod pentru implementarea functiei de dns_lookup si m-am documentat despre modul de transmitere in retea a socketului(buffer-ul care contine informatiile necesare(dns header, name, question info)):htons, ntohs. Incerc sa rezolv problema la primirea pachetului, deoarece nu il primesc. 
+
+25.06.2024
+Am rezolvat problema cu primirea pachetului.
+Am terminat de implementat dns pentru adrese IPv4 si am creat si functia de read_name, care formateaza numele domeniului primit ca raspuns pentru a-l putea afisa.Am citit raspunsul primit, authorities(daca exista),additional(daca exista), iar dupa aceea le-am afisat. Am citit si am aflat despre compression label si modul in care functioneaza si astfel am aflat formula pentru a afla offsetul unde se afla in buffer name domain-ul.
