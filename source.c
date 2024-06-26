@@ -170,7 +170,7 @@ void dns_lookup(unsigned char *host , int query_type)
 	dns->rd = 1; //recursion desired
 	dns->ra = 0; //recursion not available
 	dns->z = 0;
-	dns->ad = 0;
+	dns->ad = 1;
 	dns->cd = 0;
 	dns->rcode = 0;
 	dns->q_count = htons(1); //1 question
