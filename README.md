@@ -24,3 +24,6 @@ Am accesat site-urile:
 25.06.2024
 Am rezolvat problema cu primirea pachetului.
 Am terminat de implementat dns pentru adrese IPv4 si am creat si functia de read_name, care formateaza numele domeniului primit ca raspuns pentru a-l putea afisa.Am citit raspunsul primit, authorities(daca exista),additional(daca exista), iar dupa aceea le-am afisat. Am citit si am aflat despre compression label si modul in care functioneaza si astfel am aflat formula pentru a afla offsetul unde se afla in buffer name domain-ul.
+
+26.06.2024
+Am implementat dns lookup utility using sockets in continuare pentru Mail Exchange(MX), adrese IPv6 si inverse queries(este data o adresa IPv4 si este returnat domain name-ul.)Am construit functia reverse_dns_lookup, care este asemanatoare cu cea dns_lookup, doar ca am formatat reverse ip-ul si am utilizat pentru question type-ul care se afla in question info valoarea 12 care semnifica PTR query(a domain name pointer).Am afisat informatia din pachetul primit.Am testat tot ce am implementat.
