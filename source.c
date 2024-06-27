@@ -1,78 +1,25 @@
-#include<stdio.h>	
-#include<string.h>	
-#include<stdlib.h>	
-#include<sys/socket.h>	
-#include<arpa/inet.h>	
-#include<netinet/in.h>
-#include<unistd.h>	
-
-#define DNS_PORT 53
-#define BUFFER_SIZE 512
+#include "dns.h"
 
 void print_info();
-void dns_lookup (unsigned char* , int);
+void dns_lookup (unsigned char* , int,char*);
 void reverse_dns_lookup(unsigned char*);
 void change_dns_format_name(unsigned char*,unsigned char*);
 unsigned char* read_name(unsigned char*,unsigned char*,int*);
+void add_edns_section(unsigned char*,int* );
 
-struct DNS_HEADER
-{
-	uint16_t id; //id to match up
-
-	unsigned char rd :1; //recursion desidered
-	unsigned char tc :1; //truncated or not
-	unsigned char aa :1; //bit-specifies that the responding name server is an authority for the domain name in question section.
-	unsigned char opcode :4; //4 bit field-what kind of query(0-query, 1-inverse query,2 server status request)
-	unsigned char qr :1; //bit field-just a bit to specify if it is query(0) or response(1)
-
-	unsigned char rcode :4; //for responses(errors, format errors,name errrors, etc)
-	unsigned char cd :1; // checking disabled
-	unsigned char ad :1; // authenticated data
-	unsigned char z :1; //must be 0 in all queries and responses, for future use
-	unsigned char ra :1; // recursion available
-
-	uint16_t q_count; // number of question entries
-	uint16_t ans_count; // number of answer entries
-	uint16_t auth_count; // number of authority entries
-	uint16_t add_count; // number of resource entries
-};
-
-struct QUESTION
-{
-	uint16_t qtype; //type of query
-	uint16_t qclass; //class of query
-};
-
-
-struct R_DATA
-{
-	uint16_t type;
-	uint16_t _class;
-	int32_t ttl;
-	uint16_t data_len;
-} __attribute__((packed));
-
-
-struct RES_RECORD
-{
-	unsigned char *name;
-	struct R_DATA *resource;
-	unsigned char *rdata;
-};
-
-struct QUERY
-{
-    unsigned char* name;
-    struct QUESTION* question;
-};
 
 int main( int argc , char *argv[])
 {
+    char dns_server[16];
+    strcpy(dns_server,"8.8.8.8"); //Google DNS Server
+    dns_server[strlen(dns_server)]='\0';
+
 	if(argc==1)
     {
         printf("No argument. Please write the argument(name domain) or 'info' to see the options and the syntax.\n");
         return 0;
     }
+
     if(argc==2)
     {
         if(strcmp(argv[1],"info")==0)
@@ -81,9 +28,10 @@ int main( int argc , char *argv[])
         }
         else
         {
-            dns_lookup(argv[1], 1); // default type A- IPv4
+            dns_lookup(argv[1], 1,dns_server); // default type A- IPv4
         }
     }
+
     else if(argc==3)
     {
         if(strcmp(argv[1],"-x")==0)
@@ -92,18 +40,62 @@ int main( int argc , char *argv[])
         }
          else if(strcmp(argv[1],"MX")==0)
         {
-            dns_lookup(argv[2],15); //mail server
+            dns_lookup(argv[2],15,dns_server); //mail server
         }
         else if(strcmp(argv[1],"AAAA")==0)
         {
-            dns_lookup(argv[2], 28); // IPv6 address
+            dns_lookup(argv[2], 28,dns_server); // IPv6 address
+        }
+        else
+        {
+            strcpy(dns_server,argv[2]+1);
+            dns_server[strlen(dns_server)]='\0';
+            dns_lookup(argv[1],1,dns_server);
         }
     }
-     else
+    else if(argc==4)
+    {
+        strcpy(dns_server,argv[3]+1);
+        dns_server[strlen(dns_server)]='\0';
+
+        if(strcmp(argv[1],"MX")==0)
+        {
+            dns_lookup(argv[2],15,dns_server); //mail server
+        }
+        else if(strcmp(argv[1],"AAAA")==0)
+        {
+           dns_lookup(argv[2], 28,dns_server); // IPv6 address
+        }
+    }
+    else
     {
         printf("Incorrect syntax or wrong spelling.\n");
     }
    return 0; 
+}
+
+void add_edns_section(unsigned char *buf, int *offset) 
+{
+    struct EDNS *edns = (struct EDNS *)&buf[*offset];
+    edns->name = 0;
+    edns->type = htons(41);
+    edns->udp_payload_size = htons(EDNS_PAYLOAD_SIZE);
+    edns->extended_rcode = 0;
+    edns->edns_version = 0;
+    edns->z = 0;
+    edns->data_length = htons(CLIENT_COOKIE_LEN + 4); 
+
+    struct COOKIE_OPTION *cookie_option = (struct COOKIE_OPTION *)edns->data;
+    cookie_option->option_code = htons(COOKIE_OPTION_CODE);
+    cookie_option->option_length = htons(CLIENT_COOKIE_LEN);
+    
+    // generate random code
+    for (int i = 0; i < CLIENT_COOKIE_LEN; i++) 
+    {
+        cookie_option->client_cookie[i] = rand() % 256;
+    }
+
+    *offset += sizeof(struct EDNS) + CLIENT_COOKIE_LEN + 4;
 }
 
 void print_info()
@@ -114,9 +106,12 @@ void print_info()
     printf("\n");
     printf("Options are: \n");
     printf(" ./source domain_name\n");
+    printf(" ./source domain_name @dns_server\n");
     printf(" ./source -x ip_address(IPv4): This option sets simplified reverse  lookups,  for  mapping  addresses  to names\n");
     printf(" ./source MX domain_name : Mail exchange binding, lists hosts willing to accept mail for <mail-domain>\n");
+    printf(" ./source MX domain_name @dns_server\n");
     printf(" ./source AAAA domain_name : matches domain name to IPv6 address\n");
+    printf(" ./source AAAA domain_name @dns_server\n");
 }
 
 void change_dns_format_name(unsigned char * dns, unsigned char* host)
@@ -139,7 +134,7 @@ void change_dns_format_name(unsigned char * dns, unsigned char* host)
      *dns++='\0'; //3www3mta2ro
 }
 
-void dns_lookup(unsigned char *host , int query_type)
+void dns_lookup(unsigned char *host , int query_type, char* dns_server)
 {
 	unsigned char buf[BUFFER_SIZE],*name,*reader;
 	int socket_fd;
@@ -158,7 +153,7 @@ void dns_lookup(unsigned char *host , int query_type)
 
 	dest.sin_family = AF_INET;
 	dest.sin_port = htons(DNS_PORT);
-	dest.sin_addr.s_addr = inet_addr("8.8.8.8"); //Google DNS server
+	dest.sin_addr.s_addr = inet_addr(dns_server);
 
 	dns = (struct DNS_HEADER *)&buf;
 
@@ -176,7 +171,7 @@ void dns_lookup(unsigned char *host , int query_type)
 	dns->q_count = htons(1); //1 question
 	dns->ans_count = 0;
 	dns->auth_count = 0;
-	dns->add_count = 0;
+	dns->add_count = htons(1);
 
 	name =(unsigned char*)&buf[sizeof(struct DNS_HEADER)]; ////point to after the location of dns header
 
@@ -187,14 +182,17 @@ void dns_lookup(unsigned char *host , int query_type)
 	qinfo->qtype = htons( query_type ); // type specified by the argument
 	qinfo->qclass = htons(1); //clasa IN(internet)
 
-	if( sendto(socket_fd,(char*)buf,sizeof(struct DNS_HEADER) + (strlen((const char*)name)+1) + sizeof(struct QUESTION),0,(struct sockaddr*)&dest,sizeof(dest)) < 0)
+    int offset = sizeof(struct DNS_HEADER) + (strlen((const char*)name) + 1) + sizeof(struct QUESTION);
+    add_edns_section(buf, &offset); //to remain modified
+
+	if( sendto(socket_fd,(char*)buf,offset,0,(struct sockaddr*)&dest,sizeof(dest)) < 0)
 	{
 		printf("Failed to send\n");
 	}
 	
 	int dest_len = sizeof dest;
 
-	if(recvfrom (socket_fd,(char*)buf , 512 , 0 , (struct sockaddr*)&dest , (socklen_t*)&dest_len ) < 0)
+	if(recvfrom (socket_fd,(char*)buf ,BUFFER_SIZE , 0 , (struct sockaddr*)&dest , (socklen_t*)&dest_len ) < 0)
 	{
 		printf("Failed to receive");
 	}
@@ -208,6 +206,7 @@ void dns_lookup(unsigned char *host , int query_type)
 
     for(int i=0;i<ntohs(dns->ans_count);i++)
     {
+        answers[i].name=(unsigned char*)malloc(1000);
         answers[i].name=read_name(reader,buf,&stop);
 
         reader = reader + stop;
@@ -235,7 +234,8 @@ void dns_lookup(unsigned char *host , int query_type)
             unsigned short preference = ntohs(*((unsigned short*)reader));
             reader += 2;
 
-            unsigned char* mx_name = read_name(reader, buf, &stop);
+            unsigned char* mx_name = (unsigned char*)malloc(2000);
+            mx_name=read_name(reader, buf, &stop);
 
             char preference_str[6];
             sprintf(preference_str, "%d", preference);
@@ -255,6 +255,7 @@ void dns_lookup(unsigned char *host , int query_type)
         }
         else
         {
+            answers[i].rdata=(unsigned char*)malloc(1000);
             answers[i].rdata = read_name(reader,buf,&stop);
 			reader = reader + stop;
         }
@@ -263,12 +264,14 @@ void dns_lookup(unsigned char *host , int query_type)
 
     
     // read authorities
-    for (int i = 0; i < ntohs(dns->auth_count); i++) {
+    for (int i = 0; i < ntohs(dns->auth_count); i++) 
+    {
+        auth[i].name=(unsigned char*)malloc(1000);
         auth[i].name = read_name(reader, buf, &stop);
         reader += stop;
         auth[i].resource = (struct R_DATA*)(reader);
         reader += sizeof(struct R_DATA);
-
+        auth[i].rdata=(unsigned char*)malloc(1000);
         auth[i].rdata = read_name(reader, buf, &stop);
         reader += stop;
     }
@@ -276,6 +279,7 @@ void dns_lookup(unsigned char *host , int query_type)
     //read additional
     for(int i=0;i<ntohs(dns->add_count);i++)
 	{
+        addit[i].name=(unsigned char*)malloc(1000);
 		addit[i].name=read_name(reader,buf,&stop);
 		reader+=stop;
 
@@ -293,6 +297,7 @@ void dns_lookup(unsigned char *host , int query_type)
 		}
 		else
 		{
+            addit[i].rdata=(unsigned char*)malloc(1000);
 			addit[i].rdata=read_name(reader,buf,&stop);
 			reader+=stop;
 		}

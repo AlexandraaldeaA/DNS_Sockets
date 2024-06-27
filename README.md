@@ -27,3 +27,6 @@ Am terminat de implementat dns pentru adrese IPv4 si am creat si functia de read
 
 26.06.2024
 Am implementat dns lookup utility using sockets in continuare pentru Mail Exchange(MX), adrese IPv6 si inverse queries(este data o adresa IPv4 si este returnat domain name-ul.)Am construit functia reverse_dns_lookup, care este asemanatoare cu cea dns_lookup, doar ca am formatat reverse ip-ul si am utilizat pentru question type-ul care se afla in question info valoarea 12 care semnifica PTR query(a domain name pointer).Am afisat informatia din pachetul primit.Am testat tot ce am implementat.
+
+Update:
+In plus, am mai adaugat Extended DNS pentru a respecta standardul DNS si am mai creat doua structuri(una EDNS si una COOKIE), unde am adaugat campurile necesare standardului si pentru a putea stoca informatia suplimentara in acestea am setat din dns header add_count pe 1(htons(1)), initial fiind setat la 0.Am creat functia add_edns_section unde am initializat campurile structurii edns corespunzator si am adaugat si structura cookie, unde si campurile acesteia au fost initializate corespunzator si am generat un cod random de lungimea client cookie-ului pentru fiecare dns lookup in parte. De asemenea, am creat headerul dns.h unde am pus bibliotecile utilizate, structurile create, precum si macrodefinitiile.
