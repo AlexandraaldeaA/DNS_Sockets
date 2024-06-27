@@ -277,7 +277,7 @@ void dns_lookup(unsigned char *host , int query_type, char* dns_server)
     }
 
     //read additional
-    for(int i=0;i<ntohs(dns->add_count);i++)
+/*     for(int i=0;i<ntohs(dns->add_count);i++)
 	{
         addit[i].name=(unsigned char*)malloc(1000);
 		addit[i].name=read_name(reader,buf,&stop);
@@ -301,10 +301,10 @@ void dns_lookup(unsigned char *host , int query_type, char* dns_server)
 			addit[i].rdata=read_name(reader,buf,&stop);
 			reader+=stop;
 		}
-	}
+	} */
 
     //print answers
-    printf("->>HEADER<<-\tID : %d\tOPCODE : %d\t",dns->id,dns->opcode);
+    printf("->>HEADER<<-\tID : %d\tOPCODE : %d\t",ntohs(dns->id),ntohs(dns->opcode));
     if(dns->rcode==0)
         printf("STATUS : NO ERROR\n");
     printf("FLAGS: ");
@@ -533,7 +533,7 @@ unsigned char* read_name(unsigned char* reader,unsigned char* buffer,int* count)
     int contor=0;
 
     unsigned char* new_name;
-    new_name = (unsigned char*)malloc(256);
+    new_name = (unsigned char*)malloc(1000);
     new_name[0] = '\0';
 
     for (i = 0; i < strlen((const char*)name); i++)
